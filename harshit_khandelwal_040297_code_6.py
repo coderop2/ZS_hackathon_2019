@@ -69,12 +69,12 @@ test_df = df[df["is_goal"].isnull()].copy()
 features = [c for c in train_df.columns if c not in ['match_id', "match_event_id", 'is_goal',"shot_id_number", "date_of_game", "lat/lng"]]
 target = train_df['is_goal']
 param = {
-    'bagging_freq': 5,          'bagging_fraction': 0.335,   'boost_from_average':'false',   'boost': 'random_forest',
-    'feature_fraction': 0.41,   'learning_rate': 0.1,     'max_depth': -1,                'metric':'auc',
-    'min_data_in_leaf': 60,     'min_sum_hessian_in_leaf': 10.0,'num_leaves': 15,           'num_threads': 8,
+    'bagging_freq': 2,          'bagging_fraction': 0.5,   'boost_from_average':'false',   'boost': 'random_forest',
+    'feature_fraction': 1,   'learning_rate': 0.1,     'max_depth': -1,                'metric':'auc',
+    'min_data_in_leaf': 80,'num_leaves': 14,           'num_threads': 8,
     'tree_learner': 'serial',   'objective': 'binary',      'verbosity': 1
 }
-folds = StratifiedKFold(n_splits=5, shuffle=False, random_state=2319)
+folds = StratifiedKFold(n_splits=2, shuffle=False, random_state=2319)
 oof = np.zeros(len(train_df))
 predictions = np.zeros(len(test_df))
 for fold_, (trn_idx, val_idx) in enumerate(folds.split(train_df.values, target.values)):
@@ -84,7 +84,13 @@ for fold_, (trn_idx, val_idx) in enumerate(folds.split(train_df.values, target.v
     clf = lgb.train(param, trn_data, 1000000, valid_sets = [trn_data, val_data], verbose_eval=5000, early_stopping_rounds = 4000)
     oof[val_idx] = clf.predict(train_df.iloc[val_idx][features], num_iteration=clf.best_iteration)
     predictions += clf.predict(test_df[features], num_iteration=clf.best_iteration) / folds.n_splits
-
+print("CV score: {:<8.5f}".format(roc_auc_score(target, oof)))
 sub = pd.DataFrame({"shot_id_number": test_df.shot_id_number})
 sub["is_goal"] = predictions
-sub.to_csv("submission.csv", index=False)
+
+sub=sub.astype({'shot_id_number': 'int64'},inplace=True)
+su = pd.read_csv("sample_submission.csv")
+su.drop("is_goal",axis=1,inplace=True)
+z=su.merge(sub,how='left',on='shot_id_number')
+z.fillna(z.is_goal.mean(),inplace=True)
+z.to_csv("submission3.csv",index=False)
