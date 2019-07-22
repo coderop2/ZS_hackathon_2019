@@ -6,6 +6,15 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 import warnings
 import seaborn as sns
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import SVC
+from sklearn.metrics import make_scorer
+from sklearn.metrics import accuracy_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import AdaBoostClassifier
+from xgboost import XGBClassifier
+import warnings
 from sklearn import preprocessing
 import matplotlib.pyplot as plt
 
@@ -88,9 +97,66 @@ print("CV score: {:<8.5f}".format(roc_auc_score(target, oof)))
 sub = pd.DataFrame({"shot_id_number": test_df.shot_id_number})
 sub["is_goal"] = predictions
 
-sub=sub.astype({'shot_id_number': 'int64'},inplace=True)
+#warnings.filterwarnings(action='ignore', category=ConvergenceWarning)
+def select_model(df,features):
+    
+    all_X = df[features]
+    all_y = df["is_goal"]
+    models = [
+        {
+            "name": "RandomForestClassifier",
+            "estimator": RandomForestClassifier(random_state=1),
+            "hyperparameters":
+                {
+                    "n_estimators": [500],
+                    "criterion": ["entropy"],
+                    "max_depth": [8],
+                    "max_features": [None],
+                    "min_samples_leaf": [4,5,6],
+                    "min_samples_split": [2]
+                }
+        },
+        {
+            "name": "XGBClassifier",
+            "estimator": XGBClassifier(seed=1),
+            "hyperparameters":
+                {
+                    "min_child_weight": [50,70,80],
+                    "learning_rate": [0.025,0.02,0.021],
+                    "max_depth": [5],
+                    "gamma": [0.005,0.0049,0.0051]
+                }
+        }
+    ]
+
+    for model in models:
+        print(model['name'])
+        print('-'*len(model['name']))
+        scoring = {'AUC': 'roc_auc', 'Accuracy': make_scorer(accuracy_score)}
+
+        grid = GridSearchCV(model["estimator"],
+                            scoring=scoring,
+                            refit='AUC',
+                            param_grid=model["hyperparameters"],
+                            cv=5)
+        grid.fit(all_X,all_y)
+        model["best_params"] = grid.best_params_
+        model["best_score"] = grid.best_score_
+        model["best_model"] = grid.best_estimator_
+
+        print("Best Score: {}".format(model["best_score"]))
+        print("Best Parameters: {}\n".format(model["best_params"]))
+
+    return models
+features = [c for c in train_df.columns if c not in ['match_id', "match_event_id", 'is_goal',"shot_id_number", "date_of_game", "lat/lng"]]
+result = select_model(train_df,features)
+
+sub2=pd.DataFrame({"shot_id_number": test_df.shot_id_number})
+sub2["is_goal"] = predic
+sub2=sub2.astype({'shot_id_number': 'int64'},inplace=True)
+
 su = pd.read_csv("sample_submission.csv")
 su.drop("is_goal",axis=1,inplace=True)
-z=su.merge(sub,how='left',on='shot_id_number')
+z=su.merge(sub2,how='left',on='shot_id_number')
 z.fillna(z.is_goal.mean(),inplace=True)
-z.to_csv("submission3.csv",index=False)
+z.to_csv("harshit_khandelwal_040297_prediction_7.csv",index=False)
